@@ -4,6 +4,7 @@ import repoCard from "./api/pin.js";
 import langCard from "./api/top-langs.js";
 import wakatimeCard from "./api/wakatime.js";
 import gistCard from "./api/gist.js";
+import leetcode_total from "./api/leetcode-solved.js";
 import express from "express";
 
 const app = express();
@@ -14,6 +15,7 @@ router.get("/pin", repoCard);
 router.get("/top-langs", langCard);
 router.get("/wakatime", wakatimeCard);
 router.get("/gist", gistCard);
+router.get("/leetcode-solved", leetcode_total);
 
 app.use("/api", router);
 
