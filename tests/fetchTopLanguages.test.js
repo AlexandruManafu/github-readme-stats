@@ -169,25 +169,25 @@ describe("FetchTopLanguages", () => {
     );
   });
 
-  it("should filter repositories by included_paths", async () => {
+  it("should apply percent_contrib multipliers", async () => {
     mock.onPost("https://api.github.com/graphql").reply(200, data_langs);
 
     let repo = await fetchTopLanguages("anuraghazra", [], 1, 0, [
-      "test-repo-1",
-      "test-repo-3",
-    ]);
+      "test-repo-1:0.5",
+      "test-repo-3:0.25",
+    ].join("|"));
     expect(repo).toStrictEqual({
       HTML: {
         color: "#0f0",
-        count: 1,
+        count: 1.5,
         name: "HTML",
-        size: 100,
+        size: 150,
       },
       javascript: {
         color: "#0ff",
-        count: 1,
+        count: 1.25,
         name: "javascript",
-        size: 100,
+        size: 125,
       },
     });
   });
@@ -237,7 +237,7 @@ describe("FetchTopLanguages", () => {
     });
   });
 
-  it("should combine included_paths and path_lang filters", async () => {
+  it("should combine percent_contrib and path_lang filters", async () => {
     mock.onPost("https://api.github.com/graphql").reply(200, data_langs);
 
     let repo = await fetchTopLanguages(
@@ -245,21 +245,27 @@ describe("FetchTopLanguages", () => {
       [],
       1,
       0,
-      ["test-repo-1", "test-repo-3"],
+      "test-repo-1:0.5|test-repo-3:1",
       "test-repo-1:TypeScript",
     );
     expect(repo).toStrictEqual({
+      HTML: {
+        color: "#0f0",
+        count: 1,
+        name: "HTML",
+        size: 100,
+      },
       TypeScript: {
         color: "#858585",
-        count: 1,
+        count: 0.5,
         name: "TypeScript",
-        size: 100,
+        size: 50,
       },
       javascript: {
         color: "#0ff",
-        count: 1,
+        count: 2,
         name: "javascript",
-        size: 100,
+        size: 200,
       },
     });
   });

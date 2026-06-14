@@ -8,6 +8,44 @@ import { wrapTextMultiline } from "../common/fmt.js";
 import { request } from "../common/http.js";
 
 /**
+ * Parse a pipe-separated key:value string into a map.
+ *
+ * @param {string|string[]|undefined} input Raw query input.
+ * @param {(value: string) => any} valueParser Parser for the value portion.
+ * @returns {Record<string, any>} Parsed key/value map.
+ */
+const parsePipeSeparatedMap = (input, valueParser) => {
+  /** @type {Record<string, any>} */
+  const result = {};
+  if (!input) {
+    return result;
+  }
+
+  const items = Array.isArray(input) ? input : [input];
+  items
+    .flatMap((item) => item.split("|"))
+    .forEach((pair) => {
+      const [key, rawValue] = pair.split(":");
+      if (!key || rawValue === undefined) {
+        return;
+      }
+
+      const parsedValue = valueParser(rawValue.trim());
+      if (
+        parsedValue === undefined ||
+        parsedValue === null ||
+        (Array.isArray(parsedValue) && parsedValue.length === 0)
+      ) {
+        return;
+      }
+
+      result[key.trim().toLowerCase()] = parsedValue;
+    });
+
+  return result;
+};
+
+/**
  * Top languages fetcher object.
  *
  * @param {any} variables Fetcher variables.
@@ -57,8 +95,8 @@ const fetcher = (variables, token) => {
  * @param {string[]} exclude_repo List of repositories to exclude.
  * @param {number} size_weight Weightage to be given to size.
  * @param {number} count_weight Weightage to be given to count.
- * @param {string[]} included_paths List of repositories to include (if provided, only these will be counted).
- * @param {string} path_lang Language overrides in format "repo1=lang1,lang2|repo2=lang3".
+ * @param {string|undefined} percent_contrib Repository contribution multipliers in format "repo1:0.1|repo2:0.5".
+ * @param {string} path_lang Language overrides in format "repo1:lang1,lang2|repo2:lang3".
  * @returns {Promise<TopLangData>} Top languages data.
  */
 const fetchTopLanguages = async (
@@ -66,7 +104,7 @@ const fetchTopLanguages = async (
   exclude_repo = [],
   size_weight = 1,
   count_weight = 0,
-  included_paths = [],
+  percent_contrib = "",
   path_lang = "",
 ) => {
   if (!username) {
@@ -100,20 +138,21 @@ const fetchTopLanguages = async (
   let repoToHide = {};
   const allExcludedRepos = [...exclude_repo, ...excludeRepositories];
 
-  // Parse path_lang overrides into a map
+  // Parse path_lang overrides into a map.
   /** @type {Record<string, string[]>} */
-  const pathLangMap = {};
-  if (path_lang) {
-    const pathLangPairs = path_lang.split("|");
-    pathLangPairs.forEach((pair) => {
-      const [repoName, langs] = pair.split(":");
-      if (repoName && langs) {
-        pathLangMap[repoName.trim()] = langs
-          .split(",")
-          .map((lang) => lang.trim());
-      }
-    });
-  }
+  const pathLangMap = parsePipeSeparatedMap(path_lang, (langs) =>
+    langs
+      .split(",")
+      .map((lang) => lang.trim())
+      .filter(Boolean),
+  );
+
+  // Parse percent_contrib overrides into a map.
+  /** @type {Record<string, number>} */
+  const percentContribMap = parsePipeSeparatedMap(percent_contrib, (value) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  });
 
   // populate repoToHide map for quick lookup
   // while filtering out
@@ -128,30 +167,25 @@ const fetchTopLanguages = async (
     .sort((a, b) => b.size - a.size)
     .filter((name) => !repoToHide[name.name]);
 
-  // if included_paths is provided, only include those repositories
-  if (included_paths && included_paths.length > 0) {
-    const includedReposMap = {};
-    included_paths.forEach((repoName) => {
-      includedReposMap[repoName.toLowerCase()] = true;
-    });
-    repoNodes = repoNodes.filter(
-      (name) => includedReposMap[name.name.toLowerCase()],
-    );
-  }
-
-  // Process repositories while preserving repo information for overrides
+  // Process repositories while preserving repo information for overrides.
   const langData = {};
   repoNodes
     .filter((node) => node.languages.edges.length > 0)
     .forEach((repo) => {
+      const percentContrib = percentContribMap[repo.name.toLowerCase()] ?? 1;
+
+      if (percentContrib <= 0) {
+        return;
+      }
+
       // Check if this repo has language overrides
-      const overrideLangs = pathLangMap[repo.name];
+      const overrideLangs = pathLangMap[repo.name.toLowerCase()];
       if (overrideLangs) {
         // If override exists, use specified languages with equal distribution
         const totalSize = repo.languages.edges.reduce(
           (sum, edge) => sum + edge.size,
           0,
-        );
+        ) * percentContrib;
         const sizePerLang = totalSize / overrideLangs.length;
 
         overrideLangs.forEach((langName) => {
@@ -165,7 +199,7 @@ const fetchTopLanguages = async (
             };
           }
           langData[langKey].size += sizePerLang;
-          langData[langKey].count += 1;
+          langData[langKey].count += percentContrib;
         });
       } else {
         // Use detected languages from GitHub API
@@ -179,8 +213,8 @@ const fetchTopLanguages = async (
               count: 0,
             };
           }
-          langData[langName].size += edge.size;
-          langData[langName].count += 1;
+          langData[langName].size += edge.size * percentContrib;
+          langData[langName].count += percentContrib;
         });
       }
     });

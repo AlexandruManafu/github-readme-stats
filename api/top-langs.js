@@ -33,7 +33,7 @@ export default async (req, res) => {
     layout,
     langs_count,
     exclude_repo,
-    included_paths,
+    percent_contrib,
     size_weight,
     count_weight,
     custom_title,
@@ -125,7 +125,7 @@ export default async (req, res) => {
       parseArray(exclude_repo),
       size_weight,
       count_weight,
-      parseArray(included_paths),
+      percent_contrib,
       path_lang,
     );
     const cacheSeconds = resolveCacheSeconds({

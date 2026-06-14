@@ -15,16 +15,19 @@ const data_langs = {
       repositories: {
         nodes: [
           {
+            name: "repo-1",
             languages: {
               edges: [{ size: 150, node: { color: "#0f0", name: "HTML" } }],
             },
           },
           {
+            name: "repo-2",
             languages: {
               edges: [{ size: 100, node: { color: "#0f0", name: "HTML" } }],
             },
           },
           {
+            name: "repo-3",
             languages: {
               edges: [
                 { size: 100, node: { color: "#0ff", name: "javascript" } },
@@ -32,6 +35,7 @@ const data_langs = {
             },
           },
           {
+            name: "repo-4",
             languages: {
               edges: [
                 { size: 100, node: { color: "#0ff", name: "javascript" } },
@@ -91,6 +95,40 @@ describe("Test /api/top-langs", () => {
 
     expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "image/svg+xml");
     expect(res.send).toHaveBeenCalledWith(renderTopLanguages(langs));
+  });
+
+  it("should apply percent_contrib multipliers from the query string", async () => {
+    const req = {
+      query: {
+        username: "anuraghazra",
+        percent_contrib: "repo-1:0.5|repo-3:0.25",
+      },
+    };
+    const res = {
+      setHeader: jest.fn(),
+      send: jest.fn(),
+    };
+    mock.onPost("https://api.github.com/graphql").reply(200, data_langs);
+
+    await topLangs(req, res);
+
+    expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "image/svg+xml");
+    expect(res.send).toHaveBeenCalledWith(
+      renderTopLanguages({
+        HTML: {
+          color: "#0f0",
+          name: "HTML",
+          size: 175,
+          count: 1.5,
+        },
+        javascript: {
+          color: "#0ff",
+          name: "javascript",
+          size: 125,
+          count: 1.25,
+        },
+      }),
+    );
   });
 
   it("should work with the query options", async () => {
