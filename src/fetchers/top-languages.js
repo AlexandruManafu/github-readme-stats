@@ -57,6 +57,8 @@ const fetcher = (variables, token) => {
  * @param {string[]} exclude_repo List of repositories to exclude.
  * @param {number} size_weight Weightage to be given to size.
  * @param {number} count_weight Weightage to be given to count.
+ * @param {string[]} included_paths List of repositories to include (if provided, only these will be counted).
+ * @param {string} path_lang Language overrides in format "repo1=lang1,lang2|repo2=lang3".
  * @returns {Promise<TopLangData>} Top languages data.
  */
 const fetchTopLanguages = async (
@@ -64,6 +66,8 @@ const fetchTopLanguages = async (
   exclude_repo = [],
   size_weight = 1,
   count_weight = 0,
+  included_paths = [],
+  path_lang = "",
 ) => {
   if (!username) {
     throw new MissingParamError(["username"]);
@@ -96,6 +100,21 @@ const fetchTopLanguages = async (
   let repoToHide = {};
   const allExcludedRepos = [...exclude_repo, ...excludeRepositories];
 
+  // Parse path_lang overrides into a map
+  /** @type {Record<string, string[]>} */
+  const pathLangMap = {};
+  if (path_lang) {
+    const pathLangPairs = path_lang.split("|");
+    pathLangPairs.forEach((pair) => {
+      const [repoName, langs] = pair.split(":");
+      if (repoName && langs) {
+        pathLangMap[repoName.trim()] = langs
+          .split(",")
+          .map((lang) => lang.trim());
+      }
+    });
+  }
+
   // populate repoToHide map for quick lookup
   // while filtering out
   if (allExcludedRepos) {
@@ -109,49 +128,77 @@ const fetchTopLanguages = async (
     .sort((a, b) => b.size - a.size)
     .filter((name) => !repoToHide[name.name]);
 
-  let repoCount = 0;
+  // if included_paths is provided, only include those repositories
+  if (included_paths && included_paths.length > 0) {
+    const includedReposMap = {};
+    included_paths.forEach((repoName) => {
+      includedReposMap[repoName.toLowerCase()] = true;
+    });
+    repoNodes = repoNodes.filter(
+      (name) => includedReposMap[name.name.toLowerCase()],
+    );
+  }
 
-  repoNodes = repoNodes
+  // Process repositories while preserving repo information for overrides
+  const langData = {};
+  repoNodes
     .filter((node) => node.languages.edges.length > 0)
-    // flatten the list of language nodes
-    .reduce((acc, curr) => curr.languages.edges.concat(acc), [])
-    .reduce((acc, prev) => {
-      // get the size of the language (bytes)
-      let langSize = prev.size;
+    .forEach((repo) => {
+      // Check if this repo has language overrides
+      const overrideLangs = pathLangMap[repo.name];
+      if (overrideLangs) {
+        // If override exists, use specified languages with equal distribution
+        const totalSize = repo.languages.edges.reduce(
+          (sum, edge) => sum + edge.size,
+          0,
+        );
+        const sizePerLang = totalSize / overrideLangs.length;
 
-      // if we already have the language in the accumulator
-      // & the current language name is same as previous name
-      // add the size to the language size and increase repoCount.
-      if (acc[prev.node.name] && prev.node.name === acc[prev.node.name].name) {
-        langSize = prev.size + acc[prev.node.name].size;
-        repoCount += 1;
+        overrideLangs.forEach((langName) => {
+          const langKey = langName.trim();
+          if (!langData[langKey]) {
+            langData[langKey] = {
+              name: langKey,
+              color: "#858585", // default color for overridden languages
+              size: 0,
+              count: 0,
+            };
+          }
+          langData[langKey].size += sizePerLang;
+          langData[langKey].count += 1;
+        });
       } else {
-        // reset repoCount to 1
-        // language must exist in at least one repo to be detected
-        repoCount = 1;
+        // Use detected languages from GitHub API
+        repo.languages.edges.forEach((edge) => {
+          const langName = edge.node.name;
+          if (!langData[langName]) {
+            langData[langName] = {
+              name: langName,
+              color: edge.node.color,
+              size: 0,
+              count: 0,
+            };
+          }
+          langData[langName].size += edge.size;
+          langData[langName].count += 1;
+        });
       }
-      return {
-        ...acc,
-        [prev.node.name]: {
-          name: prev.node.name,
-          color: prev.node.color,
-          size: langSize,
-          count: repoCount,
-        },
-      };
-    }, {});
+    });
 
-  Object.keys(repoNodes).forEach((name) => {
+  // Convert to old format for compatibility
+  let repoNodes2 = langData;
+
+  Object.keys(repoNodes2).forEach((name) => {
     // comparison index calculation
-    repoNodes[name].size =
-      Math.pow(repoNodes[name].size, size_weight) *
-      Math.pow(repoNodes[name].count, count_weight);
+    repoNodes2[name].size =
+      Math.pow(repoNodes2[name].size, size_weight) *
+      Math.pow(repoNodes2[name].count, count_weight);
   });
 
-  const topLangs = Object.keys(repoNodes)
-    .sort((a, b) => repoNodes[b].size - repoNodes[a].size)
+  const topLangs = Object.keys(repoNodes2)
+    .sort((a, b) => repoNodes2[b].size - repoNodes2[a].size)
     .reduce((result, key) => {
-      result[key] = repoNodes[key];
+      result[key] = repoNodes2[key];
       return result;
     }, {});
 

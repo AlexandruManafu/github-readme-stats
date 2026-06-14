@@ -33,6 +33,7 @@ export default async (req, res) => {
     layout,
     langs_count,
     exclude_repo,
+    included_paths,
     size_weight,
     count_weight,
     custom_title,
@@ -42,6 +43,7 @@ export default async (req, res) => {
     disable_animations,
     hide_progress,
     stats_format,
+    path_lang,
   } = req.query;
   res.setHeader("Content-Type", "image/svg+xml");
 
@@ -123,6 +125,8 @@ export default async (req, res) => {
       parseArray(exclude_repo),
       size_weight,
       count_weight,
+      parseArray(included_paths),
+      path_lang,
     );
     const cacheSeconds = resolveCacheSeconds({
       requested: parseInt(cache_seconds, 10),

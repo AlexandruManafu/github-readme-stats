@@ -168,4 +168,99 @@ describe("FetchTopLanguages", () => {
       "Something went wrong while trying to retrieve the language data using the GraphQL API.",
     );
   });
+
+  it("should filter repositories by included_paths", async () => {
+    mock.onPost("https://api.github.com/graphql").reply(200, data_langs);
+
+    let repo = await fetchTopLanguages("anuraghazra", [], 1, 0, [
+      "test-repo-1",
+      "test-repo-3",
+    ]);
+    expect(repo).toStrictEqual({
+      HTML: {
+        color: "#0f0",
+        count: 1,
+        name: "HTML",
+        size: 100,
+      },
+      javascript: {
+        color: "#0ff",
+        count: 1,
+        name: "javascript",
+        size: 100,
+      },
+    });
+  });
+
+  it("should override languages using path_lang parameter", async () => {
+    mock.onPost("https://api.github.com/graphql").reply(200, data_langs);
+
+    let repo = await fetchTopLanguages(
+      "anuraghazra",
+      [],
+      1,
+      0,
+      [],
+      "test-repo-1:TypeScript|test-repo-3:Python,Go",
+    );
+    expect(repo).toStrictEqual({
+      TypeScript: {
+        color: "#858585",
+        count: 1,
+        name: "TypeScript",
+        size: 100,
+      },
+      HTML: {
+        color: "#0f0",
+        count: 1,
+        name: "HTML",
+        size: 100,
+      },
+      Python: {
+        color: "#858585",
+        count: 1,
+        name: "Python",
+        size: 50,
+      },
+      Go: {
+        color: "#858585",
+        count: 1,
+        name: "Go",
+        size: 50,
+      },
+      javascript: {
+        color: "#0ff",
+        count: 1,
+        name: "javascript",
+        size: 100,
+      },
+    });
+  });
+
+  it("should combine included_paths and path_lang filters", async () => {
+    mock.onPost("https://api.github.com/graphql").reply(200, data_langs);
+
+    let repo = await fetchTopLanguages(
+      "anuraghazra",
+      [],
+      1,
+      0,
+      ["test-repo-1", "test-repo-3"],
+      "test-repo-1:TypeScript",
+    );
+    expect(repo).toStrictEqual({
+      TypeScript: {
+        color: "#858585",
+        count: 1,
+        name: "TypeScript",
+        size: 100,
+      },
+      javascript: {
+        color: "#0ff",
+        count: 1,
+        name: "javascript",
+        size: 100,
+      },
+    });
+  });
 });
